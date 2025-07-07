@@ -1,294 +1,258 @@
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { PageHeader } from "@/components/PageHeader";
+
+import { useParams, Link } from "wouter";
+import { PageHelpSystem } from "@/components/PageHelpSystem";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Home, Users, MessageCircle, User, Phone, MessageSquare, Settings, ShoppingBag, Download } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { MapPin, Users, MessageCircle, ArrowLeft, X } from "lucide-react";
+import type { CommunityDiscussion, DiscussionCategory, DiscussionMessage } from "@shared/schema";
+import { useAuth } from "@/hooks/useAuth";
 
-// EMERGENCY ACCESS - COMPLETE FIREBASE BYPASS - JOHN ONLY
-export default function EmergencyAccess() {
+// FORCE CACHE CLEAR - New Mobile Discussion Interface v3.0
+export default function CategoryDiscussion() {
+  const { categoryId } = useParams();
+  const { appUser: user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   
-  // Check if this is John's device (simple check)
-  const isJohnDevice = () => {
-    // Check if user is admin or John specifically
-    const isAdmin = window.location.search.includes('admin=true') || 
-                   localStorage.getItem('emergency_admin') === 'true';
-    return isAdmin;
+
+  
+  const [selectedDiscussion, setSelectedDiscussion] = useState<number | null>(null);
+  const [messageInput, setMessageInput] = useState("");
+  const [showMessageDialog, setShowMessageDialog] = useState(false);
+
+  // Get category details
+  const { data: category } = useQuery<DiscussionCategory>({
+    queryKey: ["/api/discussion-categories", categoryId],
+    queryFn: async () => {
+      const response = await fetch(`/api/discussion-categories/${categoryId}`);
+      if (!response.ok) throw new Error('Failed to fetch category');
+      return response.json();
+    },
+  });
+
+  // Get discussions for this category
+  const { data: discussions = [] } = useQuery<CommunityDiscussion[]>({
+    queryKey: ["/api/community-discussions", categoryId],
+    queryFn: async () => {
+      const response = await fetch(`/api/community-discussions?categoryId=${categoryId}`);
+      if (!response.ok) throw new Error('Failed to fetch discussions');
+      return response.json();
+    },
+  });
+
+  // Get messages for selected discussion
+  const { data: messages = [], isLoading: messagesLoading } = useQuery<DiscussionMessage[]>({
+    queryKey: ["/api/discussion-messages", selectedDiscussion],
+    enabled: !!selectedDiscussion && selectedDiscussion > 0,
+    queryFn: async () => {
+      const response = await fetch(`/api/discussion-messages?discussionId=${selectedDiscussion}`);
+      if (!response.ok) throw new Error('Failed to fetch messages');
+      return response.json();
+    },
+  });
+
+  // Add message mutation
+  const addMessageMutation = useMutation({
+    mutationFn: async (data: { discussionId: number; content: string }) => {
+      const response = await apiRequest("POST", "/api/discussion-messages", {
+        ...data,
+        userId: user?.id || 0,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/discussion-messages", selectedDiscussion] });
+      setMessageInput("");
+      toast({
+        title: "Message Sent",
+        description: "Your message has been added to the discussion.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleJoinDiscussion = (discussionId: number) => {
+    setSelectedDiscussion(discussionId);
+    setShowMessageDialog(true);
   };
 
-  const handleNavigation = (path: string) => {
-    console.log(`Emergency navigation to: ${path}`);
-    try {
-      window.location.assign(path);
-    } catch (e1) {
-      try {
-        window.location.href = path;
-      } catch (e2) {
-        window.location.replace(path);
-      }
-    }
+  const handleSendMessage = () => {
+    if (!selectedDiscussion || !messageInput.trim()) return;
+    
+    addMessageMutation.mutate({
+      discussionId: selectedDiscussion,
+      content: messageInput.trim(),
+    });
   };
 
-  // Regular users see the main landing page
-  if (!isJohnDevice()) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b">
-          <div className="max-w-6xl mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold text-indigo-700">Ordinary People Community</h1>
-              <div className="space-x-4">
-                <Button 
-                  onClick={() => window.location.assign('/basic-login')}
-                  variant="outline"
-                  className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
-                >
-                  Sign In
-                </Button>
-                <Button 
-                  onClick={() => window.location.assign('/login')}
-                  className="bg-indigo-600 hover:bg-indigo-700"
-                >
-                  Get Started
-                </Button>
-              </div>
-            </div>
-          </div>
-        </header>
+  const closeDialog = () => {
+    setShowMessageDialog(false);
+    setSelectedDiscussion(null);
+    setMessageInput("");
+  };
 
-        {/* Hero Section */}
-        <div className="max-w-6xl mx-auto px-4 py-16">
-          <div className="text-center mb-16">
-            <h2 className="text-5xl font-bold text-gray-900 mb-6">
-              Connect. Share. Grow Together.
-            </h2>
-            <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-              Join a thriving community where ordinary people come together to share experiences, 
-              support each other, and build meaningful connections.
-            </p>
-            <Button 
-              onClick={() => window.location.assign('/login')}
-              className="bg-indigo-600 hover:bg-indigo-700 text-lg px-8 py-3"
-            >
-              Join Our Community
-            </Button>
-          </div>
-
-          {/* Features Grid */}
-          <div className="grid md:grid-cols-3 gap-8 mb-16">
-            <Card className="border-0 shadow-lg">
-              <CardContent className="p-6 text-center">
-                <Users className="w-12 h-12 text-indigo-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-3">Community Discussions</h3>
-                <p className="text-gray-600">Engage in meaningful conversations with like-minded people from around the world.</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="border-0 shadow-lg">
-              <CardContent className="p-6 text-center">
-                <MessageCircle className="w-12 h-12 text-indigo-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-3">Real-time Chat</h3>
-                <p className="text-gray-600">Connect instantly with community members through our live chat system.</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="border-0 shadow-lg">
-              <CardContent className="p-6 text-center">
-                <ShoppingBag className="w-12 h-12 text-indigo-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold mb-3">Local Business</h3>
-                <p className="text-gray-600">Discover and support local businesses in your community.</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Call to Action */}
-          <div className="text-center">
-            <h3 className="text-3xl font-bold text-gray-900 mb-4">Ready to get started?</h3>
-            <p className="text-lg text-gray-600 mb-8">Join thousands of community members today.</p>
-            <div className="space-x-4">
-              <Button 
-                onClick={() => window.location.assign('/login')}
-                className="bg-indigo-600 hover:bg-indigo-700 text-lg px-8 py-3"
-              >
-                Create Account
-              </Button>
-              <Button 
-                onClick={() => window.location.assign('/basic-login')}
-                variant="outline"
-                className="border-indigo-300 text-indigo-700 hover:bg-indigo-50 text-lg px-8 py-3"
-              >
-                Sign In
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (!category) return <div>Loading...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* EMERGENCY HEADER */}
-      <div className="bg-red-100 border-b-4 border-red-400 px-4 py-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-800 mb-2">🚨 EMERGENCY ACCESS ACTIVATED</h1>
-          <p className="text-red-700 text-lg">Complete Firebase bypass - All buttons working</p>
-          <p className="text-red-600">No login required - Direct access to all features</p>
+    <div className="max-w-[95vw] mx-auto px-2 py-4">
+      <PageHelpSystem currentPage="community" />
+      
+
+      
+      <PageHeader title={`${category.name} Discussions`} />
+
+      <div className="mb-4">
+        <Link href="/community">
+          <Button variant="outline" size="sm" className="bg-blue-100 border-blue-300">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Community
+          </Button>
+        </Link>
+      </div>
+
+      {/* Discussions List */}
+      <div className="space-y-4">
+        {discussions.length === 0 ? (
+          <Card className="w-full max-w-[90vw] mx-auto">
+            <CardContent className="text-center py-8">
+              <h3 className="text-lg font-semibold mb-2">No discussions yet</h3>
+              <p className="text-muted-foreground">Be the first to start a discussion!</p>
+            </CardContent>
+          </Card>
+        ) : (
+          discussions.map((discussion) => (
+            <Card key={discussion.id} className="w-full max-w-[90vw] mx-auto">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base break-words">
+                  {discussion.title}
+                </CardTitle>
+                {discussion.location && (
+                  <Badge variant="outline" className="w-fit">
+                    <MapPin className="w-3 h-3 mr-1" />
+                    {discussion.location}
+                  </Badge>
+                )}
+                <p className="text-sm text-muted-foreground break-words">
+                  {discussion.description}
+                </p>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="flex items-center gap-4 mb-3 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Users className="w-4 h-4" />
+                    <span>{discussion.participantCount || 0}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <MessageCircle className="w-4 h-4" />
+                    <span>{discussion.messageCount || 0}</span>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => handleJoinDiscussion(discussion.id)}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  Join Discussion
+                </Button>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+
+      {/* Messages Dialog */}
+      {showMessageDialog && selectedDiscussion && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={closeDialog}
+        >
+          <div 
+            className="bg-white rounded-lg w-full max-w-[95vw] max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold">
+                {discussions.find(d => d.id === selectedDiscussion)?.title}
+              </h3>
+              <Button variant="ghost" size="sm" onClick={closeDialog}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[50vh]">
+              {messagesLoading ? (
+                <div className="text-center py-8 text-gray-500">
+                  Loading messages...
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No messages yet. Start the conversation!
+                </div>
+              ) : (
+                messages.map((message) => (
+                  <div key={message.id} className="flex gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Avatar className="w-8 h-8 flex-shrink-0">
+                      <AvatarFallback>
+                        {(message as any).userName?.charAt(0) || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <div className="font-medium text-sm mb-1">
+                        {(message as any).userName || `User ${message.userId}`}
+                      </div>
+                      <p className="text-sm break-words mb-1">{message.content}</p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(message.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Message Input */}
+            <div className="p-4 border-t">
+              <div className="flex gap-2">
+                <Input
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                  placeholder="Type your message..."
+                  className="flex-1"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                />
+                <Button 
+                  onClick={handleSendMessage}
+                  disabled={!messageInput.trim() || addMessageMutation.isPending}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {addMessageMutation.isPending ? "..." : "Send"}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div className="max-w-4xl mx-auto p-6">
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="text-xl text-center">✅ EMERGENCY NAVIGATION PANEL</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              
-              {/* Main Navigation */}
-              <Button
-                onClick={() => handleNavigation('/dashboard')}
-                className="h-16 bg-blue-600 hover:bg-blue-700 text-white text-lg flex items-center justify-center gap-3"
-              >
-                <Home className="h-6 w-6" />
-                Dashboard
-              </Button>
-
-              <Button
-                onClick={() => handleNavigation('/community-direct')}
-                className="h-16 bg-green-600 hover:bg-green-700 text-white text-lg flex items-center justify-center gap-3"
-              >
-                <Users className="h-6 w-6" />
-                Community
-              </Button>
-
-              <Button
-                onClick={() => handleNavigation('/profile-wall-direct')}
-                className="h-16 bg-purple-600 hover:bg-purple-700 text-white text-lg flex items-center justify-center gap-3"
-              >
-                <User className="h-6 w-6" />
-                My Profile
-              </Button>
-
-              <Button
-                onClick={() => handleNavigation('/chat')}
-                className="h-16 bg-orange-600 hover:bg-orange-700 text-white text-lg flex items-center justify-center gap-3"
-              >
-                <MessageCircle className="h-6 w-6" />
-                Chat
-              </Button>
-
-              <Button
-                onClick={() => handleNavigation('/shop')}
-                className="h-16 bg-pink-600 hover:bg-pink-700 text-white text-lg flex items-center justify-center gap-3"
-              >
-                <ShoppingBag className="h-6 w-6" />
-                Shop
-              </Button>
-
-              <Button
-                onClick={() => handleNavigation('/settings')}
-                className="h-16 bg-gray-600 hover:bg-gray-700 text-white text-lg flex items-center justify-center gap-3"
-              >
-                <Settings className="h-6 w-6" />
-                Settings
-              </Button>
-
-              <Button
-                onClick={() => {
-                  console.log('Download Files clicked');
-                  window.open('/api/download/source-code', '_blank');
-                }}
-                className="h-16 bg-green-600 hover:bg-green-700 text-white text-lg flex items-center justify-center gap-3"
-              >
-                <Download className="h-6 w-6" />
-                Download Files
-              </Button>
-
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Communication Bypass */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="text-lg">🔧 EMERGENCY COMMUNICATION</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Button
-                onClick={() => {
-                  try {
-                    window.open('https://wa.me/447711776304', '_blank');
-                  } catch (e) {
-                    window.location.href = 'https://wa.me/447711776304';
-                  }
-                }}
-                className="h-12 bg-green-500 hover:bg-green-600 text-white flex items-center justify-center gap-2"
-              >
-                <Phone className="h-5 w-5" />
-                WhatsApp Direct
-              </Button>
-
-              <Button
-                onClick={() => {
-                  try {
-                    window.open('https://m.me/profile', '_blank');
-                  } catch (e) {
-                    console.log('Messenger backup method needed');
-                  }
-                }}
-                className="h-12 bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center gap-2"
-              >
-                <MessageSquare className="h-5 w-5" />
-                Messenger Direct
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Status Panel */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">🛠️ SYSTEM STATUS</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                <span className="font-medium">Firebase Authentication</span>
-                <span className="text-green-600 font-bold">BYPASSED ✅</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                <span className="font-medium">Direct Navigation</span>
-                <span className="text-green-600 font-bold">ACTIVE ✅</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                <span className="font-medium">Emergency Access</span>
-                <span className="text-green-600 font-bold">ENABLED ✅</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                <span className="font-medium">All Features</span>
-                <span className="text-green-600 font-bold">ACCESSIBLE ✅</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Instructions */}
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle className="text-lg">📋 EMERGENCY INSTRUCTIONS</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ol className="list-decimal list-inside space-y-2 text-gray-700">
-              <li>All buttons above bypass Firebase completely</li>
-              <li>Click any button to go directly to that section</li>
-              <li>No login loops - immediate access guaranteed</li>
-              <li>If any button fails, try the next one</li>
-              <li>WhatsApp/Messenger work independently</li>
-            </ol>
-          </CardContent>
-        </Card>
-
-      </div>
+      )}
     </div>
   );
 }
